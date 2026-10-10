@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl, { Map as MapboxMap, Marker } from "mapbox-gl";
 import type { LocationReport, Permit } from "@/lib/types";
 
@@ -10,13 +10,12 @@ interface MapCanvasProps {
   onPermitSelect: (permit: Permit) => void;
 }
 
-function markerColor(level: Permit["impactLevel"]) {
-  if (level === "high") return "#ef4444";
-  if (level === "watch") return "#f59e0b";
-  return "#10b981";
+function markerColor(status: Permit["status"]) {
+  return status === "pending" ? "#f59e0b" : "#64748b";
 }
 
 export default function MapCanvas({ report, selectedPermit, onPermitSelect }: MapCanvasProps) {
+  const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapboxMap | null>(null);
   const permitMarkers = useRef<Marker[]>([]);
@@ -57,6 +56,8 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
       });
     });
 
+    instance.on("error", () => setMapError("The map is unavailable. Permit facts and nearby lists remain accessible."));
+    instance.on("load", () => setMapError(null));
     map.current = instance;
 
     return () => {
@@ -66,7 +67,16 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
   }, []);
 
   useEffect(() => {
-    if (!map.current || !report) return;
+    if (!map.current) return;
+    map.current.stop();
+    permitMarkers.current.forEach(marker => marker.remove());
+    permitMarkers.current = [];
+    locationMarker.current?.remove();
+    locationMarker.current = null;
+    if (!report) {
+      map.current.flyTo({ center: [-28, 20], zoom: 1.65, duration: 600 });
+      return;
+    }
 
     map.current.flyTo({
       center: [report.coordinates.longitude, report.coordinates.latitude],
@@ -74,10 +84,6 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
       duration: 2200,
       essential: true,
     });
-
-    permitMarkers.current.forEach((marker) => marker.remove());
-    permitMarkers.current = [];
-    locationMarker.current?.remove();
 
     const locationElement = document.createElement("div");
     locationElement.className = "location-pin";
@@ -87,16 +93,17 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
       .addTo(map.current);
 
     report.permits.forEach((permit, index) => {
+      if (permit.lat === null || permit.lng === null) return;
       const element = document.createElement("button");
       element.type = "button";
       element.className = "permit-pin";
-      element.style.setProperty("--pin-color", markerColor(permit.impactLevel));
+      element.style.setProperty("--pin-color", markerColor(permit.status));
       element.innerHTML = `<span>${index + 1}</span>`;
-      element.setAttribute("aria-label", `Open ${permit.facilityName}`);
+      element.setAttribute("aria-label", `Open ${permit.name || permit.operator || "facility"}`);
       element.onclick = () => callbackRef.current(permit);
 
       const marker = new mapboxgl.Marker({ element, anchor: "center" })
-        .setLngLat([permit.coordinates.longitude, permit.coordinates.latitude])
+        .setLngLat([permit.lng, permit.lat])
         .addTo(map.current!);
 
       permitMarkers.current.push(marker);
@@ -104,9 +111,9 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
   }, [report]);
 
   useEffect(() => {
-    if (!map.current || !selectedPermit) return;
+    if (!map.current || !selectedPermit || selectedPermit.lat === null || selectedPermit.lng === null) return;
     map.current.easeTo({
-      center: [selectedPermit.coordinates.longitude, selectedPermit.coordinates.latitude],
+      center: [selectedPermit.lng, selectedPermit.lat],
       zoom: Math.max(map.current.getZoom(), 12.2),
       duration: 900,
       offset: [-120, 0],
@@ -118,11 +125,12 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
   return (
     <div className="absolute inset-0 bg-[#f2f5f7]">
       <div ref={mapContainer} className="h-full w-full" />
+      {mapError ? <div role="status" className="absolute left-5 top-24 max-w-xs rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{mapError}</div> : null}
       {noToken ? (
         <div className="absolute inset-0 grid place-items-center overflow-hidden bg-[#f2f5f7]">
           <div className="absolute h-[68vmin] w-[68vmin] min-h-[360px] min-w-[360px] rounded-full border border-slate-300 bg-[radial-gradient(circle_at_38%_30%,#ffffff_0,#e8eef1_45%,#cad5dc_100%)] shadow-[inset_-45px_-24px_90px_rgba(90,105,120,.16),0_35px_120px_rgba(31,41,55,.10)]" />
           <div className="relative max-w-xs rounded-2xl border border-slate-200 bg-white/90 p-4 text-center text-xs leading-5 text-slate-500 shadow-lg backdrop-blur">
-            Add <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">NEXT_PUBLIC_MAPBOX_TOKEN</code> to <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">.env.local</code> to render the interactive Mapbox globe.
+            Interactive map unavailable. Choose a preset location to explore cached permit facts and distances in the report.
           </div>
         </div>
       ) : null}

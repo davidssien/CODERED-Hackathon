@@ -1,55 +1,38 @@
-export type PermitType = "new" | "expansion" | "renewal";
-export type PermitStatus = "pending" | "approved" | "operating";
-export type ImpactLevel = "high" | "watch" | "info";
-
-export interface Coordinates {
-  latitude: number;
-  longitude: number;
-}
-
-export interface LocationMetric {
-  label: string;
-  value: number;
-  unit?: string;
-  helper: string;
-  tone: "good" | "neutral" | "warning";
-}
-
-export interface Pollutant {
-  name: string;
-  tonsPerYear: number;
-  changeTonsPerYear: number;
-}
-
-export interface Permit {
+export interface Coordinates { latitude: number; longitude: number }
+export interface Plant {
   id: string;
-  permitNumber: string;
-  facilityName: string;
-  operator: string;
-  type: PermitType;
-  status: PermitStatus;
-  coordinates: Coordinates;
-  distanceMiles: number;
-  impactScore: number;
-  impactLevel: ImpactLevel;
-  dateProposed: string;
-  commentDeadline: string;
-  acceptedDate?: string;
-  noticeUrl?: string;
-  summary: string;
-  aiEstimate: string;
-  reasons: string[];
-  pollutants: Pollutant[];
+  permitNumber: string | null;
+  category: "concrete_batch_plant";
+  name: string | null;
+  operator: string | null;
+  address: string | null;
+  city: string | null;
+  county: string | null;
+  zip: string | null;
+  lat: number | null;
+  lng: number | null;
+  locationSource: "tceq_map_link" | "geocoded" | "manual" | null;
+  status: "pending" | "existing";
+  permitType: "new" | "renewal" | "amendment" | null;
+  dateReceived: string | null;
+  commentDeadline: string | null;
+  productionRate: string | null;
+  emissions: { pollutant: string; tonsPerYear: number }[];
+  noticeUrl: string | null;
+  scrapedAt: string;
+  notes: string | null;
 }
-
+export interface PlantsFile {
+  generatedAt: string; source: string; count: number; plants: Plant[];
+}
+export interface Permit extends Plant { distanceMiles: number | null }
 export interface LocationReport {
   label: string;
   coordinates: Coordinates;
-  score: number;
-  scoreLabel: string;
-  summary: string;
-  environmentalImpact: string;
-  metrics: LocationMetric[];
+  generatedAt: string;
+  source: string;
+  datasetCount: number;
+  metrics: { radiusMiles: number; existing: number; pending: number }[];
   permits: Permit[];
-  updatedAt: string;
+  unlocatedPermits: Permit[];
 }
