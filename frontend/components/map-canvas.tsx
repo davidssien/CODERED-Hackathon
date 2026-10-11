@@ -5,6 +5,7 @@ import mapboxgl, {
   Map as MapboxMap,
   Marker,
   type FilterSpecification,
+  type GeoJSONSource,
   type LayerSpecification,
 } from "mapbox-gl";
 import type { LocationReport, Permit } from "@/lib/types";
@@ -197,6 +198,103 @@ function applyBoundarySelection(
   });
 }
 
+const FALLBACK_SOURCE = "selected-place-boundary";
+const FALLBACK_FILL = "selected-place-boundary-fill";
+const FALLBACK_LINE = "selected-place-boundary-line";
+
+function ensureFallbackBoundaryLayers(
+  instance: MapboxMap,
+  boundary: MapboxBoundary,
+  score: number | null,
+) {
+  if (!boundary.geojson) return;
+
+  const palette = conditionPalette(score);
+  const source = instance.getSource(FALLBACK_SOURCE) as GeoJSONSource | undefined;
+
+  if (source) {
+    source.setData(boundary.geojson as GeoJSON.FeatureCollection);
+  } else {
+    instance.addSource(FALLBACK_SOURCE, {
+      type: "geojson",
+      data: boundary.geojson as GeoJSON.FeatureCollection,
+    });
+  }
+
+  if (!instance.getLayer(FALLBACK_FILL)) {
+    addLayerBelowLabels(instance, {
+      id: FALLBACK_FILL,
+      type: "fill",
+      source: FALLBACK_SOURCE,
+      paint: {
+        "fill-color": palette.fill,
+        "fill-opacity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          7,
+          0.12,
+          13,
+          0.28,
+        ],
+      },
+    });
+  } else {
+    instance.setPaintProperty(FALLBACK_FILL, "fill-color", palette.fill);
+    instance.setLayoutProperty(FALLBACK_FILL, "visibility", "visible");
+  }
+
+  if (!instance.getLayer(FALLBACK_LINE)) {
+    addLayerBelowLabels(instance, {
+      id: FALLBACK_LINE,
+      type: "line",
+      source: FALLBACK_SOURCE,
+      paint: {
+        "line-color": palette.line,
+        "line-opacity": 0.98,
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          7,
+          2.5,
+          13,
+          5,
+        ],
+      },
+    });
+  } else {
+    instance.setPaintProperty(FALLBACK_LINE, "line-color", palette.line);
+    instance.setLayoutProperty(FALLBACK_LINE, "visibility", "visible");
+  }
+}
+
+function hideFallbackBoundary(instance: MapboxMap) {
+  if (instance.getLayer(FALLBACK_FILL)) {
+    instance.setLayoutProperty(FALLBACK_FILL, "visibility", "none");
+  }
+  if (instance.getLayer(FALLBACK_LINE)) {
+    instance.setLayoutProperty(FALLBACK_LINE, "visibility", "none");
+  }
+}
+
+function renderBoundary(
+  instance: MapboxMap,
+  boundary: MapboxBoundary | null,
+  score: number | null,
+) {
+  if (boundary?.source === "geojson" && boundary.geojson) {
+    applyBoundarySelection(instance, null, score);
+    ensureFallbackBoundaryLayers(instance, boundary, score);
+    return;
+  }
+
+  hideFallbackBoundary(instance);
+
+  if (boundary) ensureBoundaryLayers(instance);
+  applyBoundarySelection(instance, boundary, score);
+}
+
 export default function MapCanvas({ boundary, report, selectedPermit, onPermitSelect }: MapCanvasProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapboxMap | null>(null);
@@ -244,10 +342,7 @@ export default function MapCanvas({ boundary, report, selectedPermit, onPermitSe
         "star-intensity": 0,
       });
 
-      if (boundaryRef.current) {
-        ensureBoundaryLayers(instance);
-        applyBoundarySelection(instance, boundaryRef.current, scoreRef.current);
-      }
+      renderBoundary(instance, boundaryRef.current, scoreRef.current);
     });
 
     map.current = instance;
@@ -266,8 +361,7 @@ export default function MapCanvas({ boundary, report, selectedPermit, onPermitSe
     const instance = map.current;
     if (!instance || !instance.isStyleLoaded()) return;
 
-    if (boundary) ensureBoundaryLayers(instance);
-    applyBoundarySelection(instance, boundary, report?.score ?? null);
+    renderBoundary(instance, boundary, report?.score ?? null);
   }, [boundary, report?.score]);
 
   useEffect(() => {
