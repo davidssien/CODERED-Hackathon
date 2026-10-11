@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const TIGERWEB =
-  "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer";
+type BoundaryScope = "state" | "county" | "place" | "postcode";
 
 type Position = number[];
 type GeoJsonGeometry = {
@@ -18,6 +17,41 @@ type GeoJsonFeature = {
 type GeoJsonFeatureCollection = {
   type: "FeatureCollection";
   features: GeoJsonFeature[];
+};
+
+interface LayerQuery {
+  service: string;
+  layers: number[];
+  fallbackLabel: string;
+}
+
+const QUERIES: Record<BoundaryScope, LayerQuery> = {
+  state: {
+    service:
+      "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer",
+    layers: [0],
+    fallbackLabel: "State",
+  },
+  county: {
+    service:
+      "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer",
+    layers: [1],
+    fallbackLabel: "County",
+  },
+  place: {
+    service:
+      "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer",
+    // Incorporated places first, then census-designated places.
+    layers: [4, 5],
+    fallbackLabel: "City / Town",
+  },
+  postcode: {
+    service:
+      "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer",
+    // Current top-level ZCTA layer, with the Census 2020 layer as fallback.
+    layers: [1, 11],
+    fallbackLabel: "ZIP Code",
+  },
 };
 
 function extendBounds(
@@ -62,9 +96,11 @@ function featureCollectionBounds(
 }
 
 async function queryLayer(
+  service: string,
   layerId: number,
   longitude: number,
   latitude: number,
+  fallbackLabel: string,
 ) {
   const params = new URLSearchParams({
     where: "1=1",
@@ -72,14 +108,14 @@ async function queryLayer(
     geometryType: "esriGeometryPoint",
     inSR: "4326",
     spatialRel: "esriSpatialRelIntersects",
-    outFields: "GEOID,BASENAME,NAME",
+    outFields: "GEOID,BASENAME,NAME,ZCTA5",
     returnGeometry: "true",
     outSR: "4326",
     f: "geojson",
   });
 
   const response = await fetch(
-    `${TIGERWEB}/${layerId}/query?${params.toString()}`,
+    `${service}/${layerId}/query?${params.toString()}`,
     {
       cache: "no-store",
       headers: {
@@ -95,27 +131,40 @@ async function queryLayer(
 
   const feature = data.features[0];
   const properties = feature.properties ?? {};
-  const name =
-    String(properties.BASENAME ?? properties.NAME ?? "City / Town");
-  const geoid = String(properties.GEOID ?? "");
+  const name = String(
+    properties.BASENAME ??
+      properties.NAME ??
+      properties.ZCTA5 ??
+      fallbackLabel,
+  );
+  const geoid = String(properties.GEOID ?? properties.ZCTA5 ?? "");
+
+  const featureCollection: GeoJsonFeatureCollection = {
+    type: "FeatureCollection",
+    features: [feature],
+  };
 
   return {
-    featureCollection: {
-      type: "FeatureCollection" as const,
-      features: [feature],
-    },
+    featureCollection,
     name,
     geoid,
-    bbox: featureCollectionBounds({
-      type: "FeatureCollection",
-      features: [feature],
-    }),
+    bbox: featureCollectionBounds(featureCollection),
   };
 }
 
 export async function GET(request: NextRequest) {
   const latitude = Number(request.nextUrl.searchParams.get("latitude"));
   const longitude = Number(request.nextUrl.searchParams.get("longitude"));
+  const rawScope = request.nextUrl.searchParams.get("scope") ?? "place";
+
+  if (!(rawScope in QUERIES)) {
+    return NextResponse.json(
+      { error: "Boundary scope must be state, county, place, or postcode." },
+      { status: 400 },
+    );
+  }
+
+  const scope = rawScope as BoundaryScope;
 
   if (
     !Number.isFinite(latitude) ||
@@ -131,19 +180,30 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Current TIGERweb layer 4 = incorporated places, layer 5 = census
-  // designated places. Trying both covers cities as well as many named
-  // unincorporated communities.
-  const result =
-    (await queryLayer(4, longitude, latitude)) ??
-    (await queryLayer(5, longitude, latitude));
+  const query = QUERIES[scope];
+  let result = null;
+
+  for (const layerId of query.layers) {
+    result = await queryLayer(
+      query.service,
+      layerId,
+      longitude,
+      latitude,
+      query.fallbackLabel,
+    );
+
+    if (result) break;
+  }
 
   if (!result) {
     return NextResponse.json(
-      { error: "No city or place boundary contains that point." },
+      { error: `No ${scope} boundary contains that point.` },
       { status: 404 },
     );
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    ...result,
+    scope,
+  });
 }
