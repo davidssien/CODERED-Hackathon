@@ -20,6 +20,12 @@ interface LocationPanelProps {
   onPermitSelect: (permit: Permit) => void;
 }
 
+function conditionBadge(score: number) {
+  if (score >= 75) return "bg-emerald-300 text-emerald-950";
+  if (score >= 50) return "bg-amber-300 text-amber-950";
+  return "bg-rose-300 text-rose-950";
+}
+
 export default function LocationPanel({ report, onPermitSelect }: LocationPanelProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -43,7 +49,7 @@ export default function LocationPanel({ report, onPermitSelect }: LocationPanelP
                 <span className="text-sm text-white/45">/100</span>
               </div>
             </div>
-            <div className="rounded-full bg-amber-300 px-3 py-1 text-xs font-bold text-amber-950">{report.scoreLabel}</div>
+            <div className={`rounded-full px-3 py-1 text-xs font-bold ${conditionBadge(report.score)}`}>{report.scoreLabel}</div>
           </div>
           <p className="mt-4 text-sm leading-6 text-white/72">{report.summary}</p>
         </div>
