@@ -41,6 +41,8 @@ export interface MapboxBoundary {
   level: BoundaryLevel;
   label: string;
   bbox?: [number, number, number, number];
+  source?: "mapbox" | "geojson";
+  geojson?: unknown;
 }
 
 export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
@@ -192,16 +194,47 @@ export async function getLocationSuggestions(query: string, signal?: AbortSignal
   });
 }
 
+async function resolveCensusPlaceBoundary(location: GeocodeResult): Promise<MapboxBoundary | null> {
+  try {
+    const params = new URLSearchParams({
+      latitude: String(location.coordinates.latitude),
+      longitude: String(location.coordinates.longitude),
+    });
+
+    const response = await fetch(`/api/boundary?${params.toString()}`);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (!data?.featureCollection?.features?.length) return null;
+
+    return {
+      mapboxId: `census:${data.geoid ?? "place"}`,
+      level: "loc2",
+      label: data.name || "City / Town",
+      bbox: location.bbox,
+      source: "geojson",
+      geojson: data.featureCollection,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveMapboxBoundary(location: GeocodeResult): Promise<MapboxBoundary | null> {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  if (!token) return null;
+
+  if (!token) {
+    return resolveCensusPlaceBoundary(location);
+  }
 
   const candidates = boundaryCandidates(location.featureType);
   const definitions = candidates
     .map((level) => MAPBOX_BOUNDARY_LAYERS.find((item) => item.level === level))
     .filter((item): item is BoundaryLayerDefinition => Boolean(item));
 
-  if (definitions.length === 0) return null;
+  if (definitions.length === 0) {
+    return resolveCensusPlaceBoundary(location);
+  }
 
   const tilesets = definitions.map((item) => item.tilesetId).join(",");
   const { longitude, latitude } = location.coordinates;
@@ -217,9 +250,10 @@ export async function resolveMapboxBoundary(location: GeocodeResult): Promise<Ma
   );
 
   if (!response.ok) {
-    // Mapbox Boundaries is a separately permissioned product. Keep normal map
-    // search working when the current token does not have Boundaries access.
-    return null;
+    // Mapbox Boundaries is separately permissioned. Fall back to the current
+    // U.S. Census TIGERweb place polygon so city searches still get a real
+    // municipal outline on the Mapbox map.
+    return resolveCensusPlaceBoundary(location);
   }
 
   const data = await response.json();
@@ -245,10 +279,11 @@ export async function resolveMapboxBoundary(location: GeocodeResult): Promise<Ma
       level: definition.level,
       label: definition.label,
       bbox: location.bbox,
+      source: "mapbox",
     };
   }
 
-  return null;
+  return resolveCensusPlaceBoundary(location);
 }
 
 export async function geocodeAddress(query: string): Promise<GeocodeResult> {
