@@ -8,8 +8,8 @@ import LocationPanel from "@/components/location-panel";
 import PermitPanel from "@/components/permit-panel";
 import Legend from "@/components/legend";
 import { LocationPanelSkeleton } from "@/components/loading-states";
-import { geocodeAddress } from "@/lib/mapbox";
-import type { GeocodeResult } from "@/lib/mapbox";
+import { geocodeAddress, resolveMapboxBoundary } from "@/lib/mapbox";
+import type { GeocodeResult, MapboxBoundary } from "@/lib/mapbox";
 import { getMockLocationReport } from "@/lib/mock-data";
 import type { LocationReport, Permit } from "@/lib/types";
 
@@ -17,6 +17,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function PermitWatchApp() {
   const [report, setReport] = useState<LocationReport | null>(null);
+  const [boundary, setBoundary] = useState<MapboxBoundary | null>(null);
   const [selectedPermit, setSelectedPermit] = useState<Permit | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -26,10 +27,16 @@ export default function PermitWatchApp() {
     setError(null);
     setLocationLoading(true);
     setSelectedPermit(null);
+    setBoundary(null);
 
     try {
       const result = resolvedLocation ?? (await geocodeAddress(query));
-      await sleep(350);
+      const [boundaryResult] = await Promise.all([
+        resolveMapboxBoundary(result),
+        sleep(350),
+      ]);
+
+      setBoundary(boundaryResult);
       setReport(getMockLocationReport(result.label, result.coordinates.latitude, result.coordinates.longitude));
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Could not search that location.");
@@ -47,6 +54,7 @@ export default function PermitWatchApp() {
 
   const clearLocation = () => {
     setReport(null);
+    setBoundary(null);
     setSelectedPermit(null);
     setError(null);
   };
@@ -55,7 +63,12 @@ export default function PermitWatchApp() {
 
   return (
     <main className="relative h-[100dvh] w-screen overflow-hidden bg-slate-100 text-slate-950">
-      <MapCanvas report={report} selectedPermit={selectedPermit} onPermitSelect={openPermit} />
+      <MapCanvas
+        report={report}
+        boundary={boundary}
+        selectedPermit={selectedPermit}
+        onPermitSelect={openPermit}
+      />
 
       <div
         className={[
