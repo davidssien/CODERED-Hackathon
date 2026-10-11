@@ -1,13 +1,37 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import mapboxgl, { Map as MapboxMap, Marker } from "mapbox-gl";
+import mapboxgl, {
+  Map as MapboxMap,
+  Marker,
+  type FilterSpecification,
+  type LayerSpecification,
+} from "mapbox-gl";
 import type { LocationReport, Permit } from "@/lib/types";
+import {
+  MAPBOX_BOUNDARY_LAYERS,
+  type MapboxBoundary,
+} from "@/lib/mapbox";
 
 interface MapCanvasProps {
   report: LocationReport | null;
+  boundary: MapboxBoundary | null;
   selectedPermit: Permit | null;
   onPermitSelect: (permit: Permit) => void;
+}
+
+const WORLDVIEW_FILTER: FilterSpecification = [
+  "any",
+  ["==", "all", ["get", "worldview"]],
+  ["in", "US", ["get", "worldview"]],
+];
+
+function selectedBoundaryFilter(mapboxId: string): FilterSpecification {
+  return [
+    "all",
+    WORLDVIEW_FILTER,
+    ["==", ["get", "mapbox_id"], mapboxId],
+  ];
 }
 
 function markerColor(level: Permit["impactLevel"]) {
@@ -16,16 +40,129 @@ function markerColor(level: Permit["impactLevel"]) {
   return "#10b981";
 }
 
-export default function MapCanvas({ report, selectedPermit, onPermitSelect }: MapCanvasProps) {
+function addLayerBelowLabels(instance: MapboxMap, layer: LayerSpecification) {
+  const firstLabel = instance.getStyle().layers?.find((item) => item.type === "symbol")?.id;
+  if (firstLabel) instance.addLayer(layer, firstLabel);
+  else instance.addLayer(layer);
+}
+
+function ensureBoundaryLayers(instance: MapboxMap) {
+  MAPBOX_BOUNDARY_LAYERS.forEach((definition) => {
+    if (!instance.getSource(definition.sourceId)) {
+      instance.addSource(definition.sourceId, {
+        type: "vector",
+        url: `mapbox://${definition.tilesetId}`,
+        promoteId: "mapbox_id",
+      });
+    }
+
+    const contextLayer = `${definition.sourceId}-context`;
+    const fillLayer = `${definition.sourceId}-selected-fill`;
+    const lineLayer = `${definition.sourceId}-selected-line`;
+
+    if (!instance.getLayer(contextLayer)) {
+      addLayerBelowLabels(instance, {
+        id: contextLayer,
+        type: "line",
+        source: definition.sourceId,
+        "source-layer": definition.sourceLayer,
+        minzoom: definition.minZoom,
+        filter: WORLDVIEW_FILTER,
+        paint: {
+          "line-color": "#64748b",
+          "line-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            definition.minZoom,
+            0.16,
+            definition.minZoom + 2.5,
+            0.42,
+          ],
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            definition.minZoom,
+            0.45,
+            definition.minZoom + 4,
+            1.15,
+          ],
+        },
+      });
+    }
+
+    if (!instance.getLayer(fillLayer)) {
+      addLayerBelowLabels(instance, {
+        id: fillLayer,
+        type: "fill",
+        source: definition.sourceId,
+        "source-layer": definition.sourceLayer,
+        filter: selectedBoundaryFilter("__no_boundary__"),
+        paint: {
+          "fill-color": "#2563eb",
+          "fill-opacity": 0.1,
+        },
+      });
+    }
+
+    if (!instance.getLayer(lineLayer)) {
+      addLayerBelowLabels(instance, {
+        id: lineLayer,
+        type: "line",
+        source: definition.sourceId,
+        "source-layer": definition.sourceLayer,
+        filter: selectedBoundaryFilter("__no_boundary__"),
+        paint: {
+          "line-color": "#1d4ed8",
+          "line-opacity": 0.95,
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            Math.max(0, definition.minZoom - 1),
+            2,
+            definition.minZoom + 5,
+            4,
+          ],
+        },
+      });
+    }
+  });
+}
+
+function applyBoundarySelection(instance: MapboxMap, boundary: MapboxBoundary | null) {
+  MAPBOX_BOUNDARY_LAYERS.forEach((definition) => {
+    const selected = boundary?.level === definition.level ? boundary.mapboxId : "__no_boundary__";
+    const filter = selectedBoundaryFilter(selected);
+
+    const contextLayer = `${definition.sourceId}-context`;
+    const fillLayer = `${definition.sourceId}-selected-fill`;
+    const lineLayer = `${definition.sourceId}-selected-line`;
+
+    if (instance.getLayer(contextLayer)) {
+      instance.setLayoutProperty(contextLayer, "visibility", boundary ? "visible" : "none");
+    }
+    if (instance.getLayer(fillLayer)) instance.setFilter(fillLayer, filter);
+    if (instance.getLayer(lineLayer)) instance.setFilter(lineLayer, filter);
+  });
+}
+
+export default function MapCanvas({ boundary, report, selectedPermit, onPermitSelect }: MapCanvasProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapboxMap | null>(null);
   const permitMarkers = useRef<Marker[]>([]);
   const locationMarker = useRef<Marker | null>(null);
   const callbackRef = useRef(onPermitSelect);
+  const boundaryRef = useRef(boundary);
 
   useEffect(() => {
     callbackRef.current = onPermitSelect;
   }, [onPermitSelect]);
+
+  useEffect(() => {
+    boundaryRef.current = boundary;
+  }, [boundary]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -55,25 +192,68 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
         "space-color": "rgb(244, 247, 250)",
         "star-intensity": 0,
       });
+
+      if (boundaryRef.current) {
+        ensureBoundaryLayers(instance);
+        applyBoundarySelection(instance, boundaryRef.current);
+      }
     });
 
     map.current = instance;
 
     return () => {
+      permitMarkers.current.forEach((marker) => marker.remove());
+      permitMarkers.current = [];
+      locationMarker.current?.remove();
+      locationMarker.current = null;
       instance.remove();
       map.current = null;
     };
   }, []);
 
   useEffect(() => {
-    if (!map.current || !report) return;
+    const instance = map.current;
+    if (!instance || !instance.isStyleLoaded()) return;
 
-    map.current.flyTo({
-      center: [report.coordinates.longitude, report.coordinates.latitude],
-      zoom: 11.4,
-      duration: 2200,
-      essential: true,
-    });
+    if (boundary) ensureBoundaryLayers(instance);
+    applyBoundarySelection(instance, boundary);
+  }, [boundary]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !report) return;
+
+    if (boundary?.bbox) {
+      const [west, south, east, north] = boundary.bbox;
+      instance.fitBounds(
+        [
+          [west, south],
+          [east, north],
+        ],
+        {
+          padding: { top: 90, right: 90, bottom: 90, left: 90 },
+          maxZoom: 13,
+          duration: 2200,
+          essential: true,
+        },
+      );
+    } else {
+      const zoomByLevel: Partial<Record<MapboxBoundary["level"], number>> = {
+        adm0: 3.4,
+        adm1: 5.2,
+        adm2: 8,
+        loc2: 10.4,
+        loc3: 12,
+        loc4: 13.5,
+      };
+
+      instance.flyTo({
+        center: [report.coordinates.longitude, report.coordinates.latitude],
+        zoom: boundary ? zoomByLevel[boundary.level] ?? 11.4 : 11.4,
+        duration: 2200,
+        essential: true,
+      });
+    }
 
     permitMarkers.current.forEach((marker) => marker.remove());
     permitMarkers.current = [];
@@ -84,7 +264,7 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
     locationElement.setAttribute("aria-label", "Searched location");
     locationMarker.current = new mapboxgl.Marker({ element: locationElement })
       .setLngLat([report.coordinates.longitude, report.coordinates.latitude])
-      .addTo(map.current);
+      .addTo(instance);
 
     report.permits.forEach((permit, index) => {
       const element = document.createElement("button");
@@ -97,11 +277,11 @@ export default function MapCanvas({ report, selectedPermit, onPermitSelect }: Ma
 
       const marker = new mapboxgl.Marker({ element, anchor: "center" })
         .setLngLat([permit.coordinates.longitude, permit.coordinates.latitude])
-        .addTo(map.current!);
+        .addTo(instance);
 
       permitMarkers.current.push(marker);
     });
-  }, [report]);
+  }, [boundary, report]);
 
   useEffect(() => {
     if (!map.current || !selectedPermit) return;
