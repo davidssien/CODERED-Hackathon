@@ -40,6 +40,34 @@ function markerColor(level: Permit["impactLevel"]) {
   return "#10b981";
 }
 
+function conditionPalette(score: number | null) {
+  if (score == null) {
+    return {
+      fill: "#64748b",
+      line: "#475569",
+    };
+  }
+
+  if (score >= 75) {
+    return {
+      fill: "#22c55e",
+      line: "#15803d",
+    };
+  }
+
+  if (score >= 50) {
+    return {
+      fill: "#f59e0b",
+      line: "#d97706",
+    };
+  }
+
+  return {
+    fill: "#ef4444",
+    line: "#dc2626",
+  };
+}
+
 function addLayerBelowLabels(instance: MapboxMap, layer: LayerSpecification) {
   const firstLabel = instance.getStyle().layers?.find((item) => item.type === "symbol")?.id;
   if (firstLabel) instance.addLayer(layer, firstLabel);
@@ -100,8 +128,16 @@ function ensureBoundaryLayers(instance: MapboxMap) {
         "source-layer": definition.sourceLayer,
         filter: selectedBoundaryFilter("__no_boundary__"),
         paint: {
-          "fill-color": "#2563eb",
-          "fill-opacity": 0.1,
+          "fill-color": "#f59e0b",
+          "fill-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            Math.max(0, definition.minZoom - 1),
+            0.08,
+            definition.minZoom + 4,
+            0.22,
+          ],
         },
       });
     }
@@ -114,7 +150,7 @@ function ensureBoundaryLayers(instance: MapboxMap) {
         "source-layer": definition.sourceLayer,
         filter: selectedBoundaryFilter("__no_boundary__"),
         paint: {
-          "line-color": "#1d4ed8",
+          "line-color": "#d97706",
           "line-opacity": 0.95,
           "line-width": [
             "interpolate",
@@ -131,7 +167,13 @@ function ensureBoundaryLayers(instance: MapboxMap) {
   });
 }
 
-function applyBoundarySelection(instance: MapboxMap, boundary: MapboxBoundary | null) {
+function applyBoundarySelection(
+  instance: MapboxMap,
+  boundary: MapboxBoundary | null,
+  score: number | null,
+) {
+  const palette = conditionPalette(score);
+
   MAPBOX_BOUNDARY_LAYERS.forEach((definition) => {
     const selected = boundary?.level === definition.level ? boundary.mapboxId : "__no_boundary__";
     const filter = selectedBoundaryFilter(selected);
@@ -143,8 +185,15 @@ function applyBoundarySelection(instance: MapboxMap, boundary: MapboxBoundary | 
     if (instance.getLayer(contextLayer)) {
       instance.setLayoutProperty(contextLayer, "visibility", boundary ? "visible" : "none");
     }
-    if (instance.getLayer(fillLayer)) instance.setFilter(fillLayer, filter);
-    if (instance.getLayer(lineLayer)) instance.setFilter(lineLayer, filter);
+    if (instance.getLayer(fillLayer)) {
+      instance.setFilter(fillLayer, filter);
+      instance.setPaintProperty(fillLayer, "fill-color", palette.fill);
+    }
+
+    if (instance.getLayer(lineLayer)) {
+      instance.setFilter(lineLayer, filter);
+      instance.setPaintProperty(lineLayer, "line-color", palette.line);
+    }
   });
 }
 
@@ -155,6 +204,7 @@ export default function MapCanvas({ boundary, report, selectedPermit, onPermitSe
   const locationMarker = useRef<Marker | null>(null);
   const callbackRef = useRef(onPermitSelect);
   const boundaryRef = useRef(boundary);
+  const scoreRef = useRef<number | null>(report?.score ?? null);
 
   useEffect(() => {
     callbackRef.current = onPermitSelect;
@@ -162,7 +212,8 @@ export default function MapCanvas({ boundary, report, selectedPermit, onPermitSe
 
   useEffect(() => {
     boundaryRef.current = boundary;
-  }, [boundary]);
+    scoreRef.current = report?.score ?? null;
+  }, [boundary, report?.score]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -195,7 +246,7 @@ export default function MapCanvas({ boundary, report, selectedPermit, onPermitSe
 
       if (boundaryRef.current) {
         ensureBoundaryLayers(instance);
-        applyBoundarySelection(instance, boundaryRef.current);
+        applyBoundarySelection(instance, boundaryRef.current, scoreRef.current);
       }
     });
 
@@ -216,8 +267,8 @@ export default function MapCanvas({ boundary, report, selectedPermit, onPermitSe
     if (!instance || !instance.isStyleLoaded()) return;
 
     if (boundary) ensureBoundaryLayers(instance);
-    applyBoundarySelection(instance, boundary);
-  }, [boundary]);
+    applyBoundarySelection(instance, boundary, report?.score ?? null);
+  }, [boundary, report?.score]);
 
   useEffect(() => {
     const instance = map.current;
