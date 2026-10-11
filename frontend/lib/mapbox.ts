@@ -194,11 +194,41 @@ export async function getLocationSuggestions(query: string, signal?: AbortSignal
   });
 }
 
-async function resolveCensusPlaceBoundary(location: GeocodeResult): Promise<MapboxBoundary | null> {
+type CensusBoundaryScope = "state" | "county" | "place" | "postcode";
+
+function censusScopeForFeatureType(featureType?: GeocodeFeatureType): CensusBoundaryScope | null {
+  if (featureType === "region") return "state";
+  if (featureType === "district") return "county";
+  if (featureType === "postcode") return "postcode";
+
+  if (
+    !featureType ||
+    ["place", "locality", "neighborhood", "street", "address", "secondary_address"].includes(
+      featureType,
+    )
+  ) {
+    return "place";
+  }
+
+  return null;
+}
+
+function boundaryLevelForScope(scope: CensusBoundaryScope): BoundaryLevel {
+  if (scope === "state") return "adm1";
+  if (scope === "county") return "adm2";
+  if (scope === "postcode") return "loc3";
+  return "loc2";
+}
+
+async function resolveCensusBoundary(
+  location: GeocodeResult,
+  scope: CensusBoundaryScope,
+): Promise<MapboxBoundary | null> {
   try {
     const params = new URLSearchParams({
       latitude: String(location.coordinates.latitude),
       longitude: String(location.coordinates.longitude),
+      scope,
     });
 
     const response = await fetch(`/api/boundary?${params.toString()}`);
@@ -208,9 +238,9 @@ async function resolveCensusPlaceBoundary(location: GeocodeResult): Promise<Mapb
     if (!data?.featureCollection?.features?.length) return null;
 
     return {
-      mapboxId: `census:${data.geoid ?? "place"}`,
-      level: "loc2",
-      label: data.name || "City / Town",
+      mapboxId: `census:${scope}:${data.geoid ?? "boundary"}`,
+      level: boundaryLevelForScope(scope),
+      label: data.name || scope,
       bbox: data.bbox ?? location.bbox,
       source: "geojson",
       geojson: data.featureCollection,
@@ -221,23 +251,20 @@ async function resolveCensusPlaceBoundary(location: GeocodeResult): Promise<Mapb
 }
 
 export async function resolveMapboxBoundary(location: GeocodeResult): Promise<MapboxBoundary | null> {
-  // For U.S. city/address searches, resolve the actual municipal/place polygon
-  // first. This is much more reliable than silently depending on a token having
-  // the separately licensed Mapbox Boundaries product enabled.
-  if (
-    !location.featureType ||
-    ["place", "locality", "neighborhood", "street", "address", "secondary_address", "postcode"].includes(
-      location.featureType,
-    )
-  ) {
-    const placeBoundary = await resolveCensusPlaceBoundary(location);
-    if (placeBoundary) return placeBoundary;
+  // Match the boundary size to what the user searched:
+  // region -> state, district -> county, place/locality -> city/town,
+  // postcode -> ZIP area, address/street/neighborhood -> containing city.
+  const censusScope = censusScopeForFeatureType(location.featureType);
+
+  if (censusScope) {
+    const scopedBoundary = await resolveCensusBoundary(location, censusScope);
+    if (scopedBoundary) return scopedBoundary;
   }
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   if (!token) {
-    return resolveCensusPlaceBoundary(location);
+    return censusScope ? resolveCensusBoundary(location, censusScope) : null;
   }
 
   const candidates = boundaryCandidates(location.featureType);
@@ -246,7 +273,7 @@ export async function resolveMapboxBoundary(location: GeocodeResult): Promise<Ma
     .filter((item): item is BoundaryLayerDefinition => Boolean(item));
 
   if (definitions.length === 0) {
-    return resolveCensusPlaceBoundary(location);
+    return censusScope ? resolveCensusBoundary(location, censusScope) : null;
   }
 
   const tilesets = definitions.map((item) => item.tilesetId).join(",");
@@ -266,7 +293,7 @@ export async function resolveMapboxBoundary(location: GeocodeResult): Promise<Ma
     // Mapbox Boundaries is separately permissioned. Fall back to the current
     // U.S. Census TIGERweb place polygon so city searches still get a real
     // municipal outline on the Mapbox map.
-    return resolveCensusPlaceBoundary(location);
+    return censusScope ? resolveCensusBoundary(location, censusScope) : null;
   }
 
   const data = await response.json();
@@ -296,7 +323,7 @@ export async function resolveMapboxBoundary(location: GeocodeResult): Promise<Ma
     };
   }
 
-  return resolveCensusPlaceBoundary(location);
+  return censusScope ? resolveCensusBoundary(location, censusScope) : null;
 }
 
 export async function geocodeAddress(query: string): Promise<GeocodeResult> {
