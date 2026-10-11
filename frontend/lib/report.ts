@@ -1,4 +1,4 @@
-import type { Coordinates, Permit, PlantsFile, LocationReport } from "./types";
+import type { Coordinates, Permit, PlantsFile, LocationReport, DemoLocation, SchoolContext } from "./types";
 
 export function distanceMiles(a: Coordinates, b: Coordinates): number {
   const radians = (degrees: number) => degrees * Math.PI / 180;
@@ -9,7 +9,7 @@ export function distanceMiles(a: Coordinates, b: Coordinates): number {
   return 3958.7613 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, h))));
 }
 
-export function buildLocationReport(data: PlantsFile, label: string, coordinates: Coordinates): LocationReport {
+export function buildLocationReport(data: PlantsFile, label: string, coordinates: Coordinates, schools: DemoLocation[] = []): LocationReport {
   if (!Number.isFinite(coordinates.latitude) || !Number.isFinite(coordinates.longitude) ||
       Math.abs(coordinates.latitude) > 90 || Math.abs(coordinates.longitude) > 180) {
     throw new Error("Invalid coordinates.");
@@ -32,5 +32,14 @@ export function buildLocationReport(data: PlantsFile, label: string, coordinates
   const permits = located.filter(p => p.distanceMiles! <= 5)
     .sort((a, b) => a.distanceMiles! - b.distanceMiles! || a.id.localeCompare(b.id));
   return { label, coordinates, generatedAt: data.generatedAt, source: data.source,
-    datasetCount: plants.length, metrics, permits, unlocatedPermits };
+    datasetCount: plants.length, metrics, permits, unlocatedPermits, schoolContext: findSampleSchools(coordinates, schools) };
+}
+
+export function findSampleSchools(coordinates: Coordinates, schools: DemoLocation[]): SchoolContext {
+  return {
+    coverage: "demo_sample", sampleSize: schools.length, radiusMiles: 5,
+    schools: schools.map(school => ({ ...school, distanceMiles: distanceMiles(coordinates, school.coordinates) }))
+      .filter(school => Number.isFinite(school.distanceMiles) && school.distanceMiles <= 5)
+      .sort((a, b) => a.distanceMiles - b.distanceMiles || a.id.localeCompare(b.id)),
+  };
 }

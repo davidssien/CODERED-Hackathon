@@ -25,7 +25,7 @@ export interface Plant {
 export interface PlantsFile {
   generatedAt: string; source: string; count: number; plants: Plant[];
 }
-export interface Permit extends Plant { distanceMiles: number | null }
+export interface Permit extends Plant { distanceMiles: number | null; schoolContext?: SchoolContext }
 export interface LocationReport {
   label: string;
   coordinates: Coordinates;
@@ -35,4 +35,19 @@ export interface LocationReport {
   metrics: { radiusMiles: number; existing: number; pending: number }[];
   permits: Permit[];
   unlocatedPermits: Permit[];
+  schoolContext: SchoolContext;
+}
+
+export interface DemoLocation {
+  id: string;
+  label: string;
+  address: string;
+  coordinates: Coordinates;
+  locationSource: "geocoded";
+}
+export interface SchoolContext {
+  coverage: "demo_sample";
+  sampleSize: number;
+  radiusMiles: number;
+  schools: (DemoLocation & { distanceMiles: number })[];
 }

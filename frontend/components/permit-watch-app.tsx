@@ -74,10 +74,10 @@ export default function PermitWatchApp() {
           <AlertCircle className="h-4 w-4 shrink-0" />{error}
         </div> : null}
         {!active ? <div className="mt-3 rounded-2xl bg-white/95 p-3 shadow-panel">
-          <p className="text-xs font-semibold text-slate-600">Try a sourced facility location · cached real data</p>
+          <p className="text-xs font-semibold text-slate-600">Try a sourced school location · cached real data</p>
           <div className="mt-2 flex flex-wrap gap-2">{DEMO_LOCATIONS.map(preset => <button key={preset.label} type="button"
-            onClick={() => loadLocation(preset.label, preset)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100">{preset.label}</button>)}</div>
-          <p className="mt-2 text-[10px] leading-4 text-slate-500">Harris County concrete batch plants. Presets use facility addresses; arbitrary address/ZIP search requires Mapbox configuration.</p>
+            onClick={() => loadLocation(preset.label, { label: `${preset.label} · ${preset.address}`, coordinates: preset.coordinates })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100">{preset.label}</button>)}</div>
+          <p className="mt-2 text-[10px] leading-4 text-slate-500">Harris County concrete batch plants. Presets use three demo school addresses; arbitrary address/ZIP search requires Mapbox configuration.</p>
         </div> : null}
       </div>
       {report ? <Legend /> : null}
@@ -85,7 +85,7 @@ export default function PermitWatchApp() {
         active ? "bottom-0 right-0 h-[72dvh] w-full translate-y-0 rounded-t-[30px] opacity-100 sm:bottom-4 sm:right-4 sm:h-[calc(100dvh-2rem)] sm:w-[440px] sm:rounded-[30px] lg:w-[460px]"
           : "pointer-events-none bottom-4 right-4 h-[calc(100dvh-2rem)] w-[460px] translate-x-10 opacity-0"].join(" ")}>
         {locationLoading ? <LocationPanelSkeleton />
-          : report && selectedPermit ? <PermitPanel permit={selectedPermit} onBack={() => setSelectedPermit(null)} />
+          : report && selectedPermit ? <PermitPanel key={selectedPermit.id} permit={selectedPermit} location={report.coordinates} onBack={() => setSelectedPermit(null)} />
           : report ? <LocationPanel report={report} onPermitSelect={setSelectedPermit} /> : null}
       </aside>
     </main>

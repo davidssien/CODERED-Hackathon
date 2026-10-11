@@ -1,5 +1,9 @@
-// Presets use sourced facility addresses, not invented resident locations.
-export const DEMO_LOCATIONS = [
-  { label: "110 Holmes Road, Houston, TX 77045", coordinates: { latitude: 29.652777, longitude: -95.440277 } },
-  { label: "11206C Gifford Hill Road, Houston, TX 77041", coordinates: { latitude: 29.871115, longitude: -95.583033 } },
-] as const;
+import data from "../../data/demo-addresses.json";
+import type { DemoLocation } from "./types";
+
+// Use sourced school coordinates; recompute counts from current plant records.
+export const DEMO_LOCATIONS: DemoLocation[] = data.addresses.map(place => ({
+  id: place.id, label: place.label, address: place.address,
+  coordinates: { latitude: place.lat, longitude: place.lng }, locationSource: "geocoded",
+}));
+export const DEMO_GENERATED_AT = data.generatedAt;

@@ -1,8 +1,29 @@
 "use client";
+import { useEffect, useState } from "react";
+import SchoolContextView from "@/components/school-context";
+import PermitActions from "@/components/permit-actions";
 import { ArrowLeft, FileText } from "lucide-react";
-import type { Permit } from "@/lib/types";
+import type { Coordinates, Permit } from "@/lib/types";
 
-export default function PermitPanel({ permit, onBack }: { permit: Permit; onBack: () => void }) {
+export default function PermitPanel({ permit: initialPermit, location, onBack }: { permit: Permit; location: Coordinates; onBack: () => void }) {
+  const [detail, setDetail] = useState(initialPermit);
+  const [detailError, setDetailError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ lat: String(location.latitude), lng: String(location.longitude) });
+    fetch(`/api/permits/${encodeURIComponent(initialPermit.id)}?${params}`, {
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
+    }).then(async response => {
+      if (!response.ok) throw new Error("Permit details are temporarily unavailable. Showing cached report facts.");
+      const body = await response.json();
+      if (!controller.signal.aborted) setDetail(body.permit);
+    }).catch(() => {
+      if (!controller.signal.aborted) setDetailError("Permit details are temporarily unavailable. Showing cached report facts.");
+    });
+    return () => controller.abort();
+  }, [initialPermit.id, location.latitude, location.longitude]);
+  const permit = detail;
+
   const fields = [
     ["Status in cached dataset", permit.status === "pending" ? "Pending application" : "Existing facility record"],
     ["Permit number", permit.permitNumber],
@@ -45,7 +66,11 @@ export default function PermitPanel({ permit, onBack }: { permit: Permit; onBack
             : <p className="mt-3 text-xs text-slate-500">Source link unavailable.</p>}
           <p className="mt-3 text-xs text-slate-500">If the source is temporarily unavailable, these cached facts remain accessible. Verify current status with TCEQ.</p>
         </section>
-        <p className="mt-5 text-xs leading-5 text-slate-500">Plain-language AI explanations and editable comment drafting are not connected yet. Proximity alone does not establish health effects.</p>
+        {detailError ? <p role="status" className="mt-4 text-xs text-amber-700">{detailError}</p> : null}
+        {permit.lat === null || permit.lng === null ? <p className="mt-4 text-xs text-slate-500">School distances are unavailable because the facility has no coordinates.</p>
+          : permit.schoolContext ? <SchoolContextView context={permit.schoolContext} origin="this facility" /> : null}
+        <PermitActions key={permit.id} permitId={permit.id} />
+        <p className="mt-5 text-xs leading-5 text-slate-500">Proximity alone does not establish health effects.</p>
       </div>
     </div>
   );

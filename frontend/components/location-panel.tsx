@@ -1,5 +1,6 @@
 "use client";
 import { CalendarClock, ChevronRight, MapPin } from "lucide-react";
+import SchoolContextView from "@/components/school-context";
 import type { LocationReport, Permit } from "@/lib/types";
 
 export default function LocationPanel({ report, onPermitSelect }: {
@@ -43,9 +44,10 @@ export default function LocationPanel({ report, onPermitSelect }: {
           </table>
         </div>
         <p className="mt-3 text-xs leading-5 text-slate-500">Straight-line distances. Counts describe this dataset, not all industry or health risk. Applications can concern facilities already operating; the two columns may overlap.</p>
-        <p className="mt-2 text-xs text-slate-500">School proximity data is not connected yet.</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+        <SchoolContextView context={report.schoolContext} origin="your selected location" />
+        <div className="mt-5" />
         <h2 className="mb-3 text-sm font-semibold">Pending applications within 5 miles ({pending.length})</h2>
         {pending.length ? list(pending) : <p className="mb-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No pending permits within 5 miles in this dataset. This does not establish that no applications exist.</p>}
         <h2 className="mb-3 mt-5 text-sm font-semibold">Existing facility records within 5 miles ({existing.length})</h2>
