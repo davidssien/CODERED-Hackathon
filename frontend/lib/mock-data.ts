@@ -83,16 +83,41 @@ function permitFromIndex(index: number, latitude: number, longitude: number): Pe
   };
 }
 
+function demoConditionScore(latitude: number, longitude: number) {
+  const seed =
+    Math.sin(latitude * 12.9898 + longitude * 78.233) * 43758.5453;
+  const normalized = seed - Math.floor(seed);
+  return Math.round(32 + normalized * 58);
+}
+
+function scoreLabel(score: number) {
+  if (score >= 75) return "Good";
+  if (score >= 50) return "Watch";
+  return "Poor";
+}
+
+function scoreSummary(score: number) {
+  if (score >= 75) {
+    return "This area scores well in the demo model, with comparatively lower modeled environmental burden and stronger overall neighborhood conditions.";
+  }
+
+  if (score >= 50) {
+    return "This area shows a moderate environmental burden in the demo model. Current conditions are mixed, with nearby industrial activity and heat exposure pulling the overall score down.";
+  }
+
+  return "This area scores poorly in the demo model, indicating a higher modeled environmental burden and weaker overall neighborhood conditions.";
+}
+
 export function getMockLocationReport(label: string, latitude: number, longitude: number): LocationReport {
   const permits = Array.from({ length: 6 }, (_, index) => permitFromIndex(index, latitude, longitude));
+  const score = demoConditionScore(latitude, longitude);
 
   return {
     label,
     coordinates: { latitude, longitude },
-    score: 68,
-    scoreLabel: "Watch",
-    summary:
-      "This area shows a moderate environmental burden in the demo model. Current air conditions are acceptable, but nearby industrial activity and heat exposure pull the overall score down.",
+    score,
+    scoreLabel: scoreLabel(score),
+    summary: scoreSummary(score),
     environmentalImpact:
       "The strongest modeled pressures are nearby permitted industrial sources and heat exposure. This is placeholder scoring until the live TCEQ, H3AT, school, and air-monitor datasets are connected.",
     metrics: [
