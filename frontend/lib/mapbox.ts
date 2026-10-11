@@ -211,7 +211,7 @@ async function resolveCensusPlaceBoundary(location: GeocodeResult): Promise<Mapb
       mapboxId: `census:${data.geoid ?? "place"}`,
       level: "loc2",
       label: data.name || "City / Town",
-      bbox: location.bbox,
+      bbox: data.bbox ?? location.bbox,
       source: "geojson",
       geojson: data.featureCollection,
     };
@@ -221,6 +221,19 @@ async function resolveCensusPlaceBoundary(location: GeocodeResult): Promise<Mapb
 }
 
 export async function resolveMapboxBoundary(location: GeocodeResult): Promise<MapboxBoundary | null> {
+  // For U.S. city/address searches, resolve the actual municipal/place polygon
+  // first. This is much more reliable than silently depending on a token having
+  // the separately licensed Mapbox Boundaries product enabled.
+  if (
+    !location.featureType ||
+    ["place", "locality", "neighborhood", "street", "address", "secondary_address", "postcode"].includes(
+      location.featureType,
+    )
+  ) {
+    const placeBoundary = await resolveCensusPlaceBoundary(location);
+    if (placeBoundary) return placeBoundary;
+  }
+
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   if (!token) {
