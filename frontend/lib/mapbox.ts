@@ -47,7 +47,7 @@ export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
   {
     level: "adm0",
     label: "Country",
-    tilesetId: "mapbox.boundaries-adm0-v4_6",
+    tilesetId: "mapbox.boundaries-adm0-v4_7",
     sourceId: "mapbox-boundary-adm0",
     sourceLayer: "boundaries_admin_0",
     minZoom: 0,
@@ -55,7 +55,7 @@ export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
   {
     level: "adm1",
     label: "State / Region",
-    tilesetId: "mapbox.boundaries-adm1-v4_6",
+    tilesetId: "mapbox.boundaries-adm1-v4_7",
     sourceId: "mapbox-boundary-adm1",
     sourceLayer: "boundaries_admin_1",
     minZoom: 3,
@@ -63,7 +63,7 @@ export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
   {
     level: "adm2",
     label: "County / District",
-    tilesetId: "mapbox.boundaries-adm2-v4_6",
+    tilesetId: "mapbox.boundaries-adm2-v4_7",
     sourceId: "mapbox-boundary-adm2",
     sourceLayer: "boundaries_admin_2",
     minZoom: 5.5,
@@ -71,7 +71,7 @@ export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
   {
     level: "loc2",
     label: "City / Town",
-    tilesetId: "mapbox.boundaries-loc2-v4_6",
+    tilesetId: "mapbox.boundaries-loc2-v4_7",
     sourceId: "mapbox-boundary-loc2",
     sourceLayer: "boundaries_locality_2",
     minZoom: 7,
@@ -79,7 +79,7 @@ export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
   {
     level: "loc3",
     label: "District / Quarter",
-    tilesetId: "mapbox.boundaries-loc3-v4_6",
+    tilesetId: "mapbox.boundaries-loc3-v4_7",
     sourceId: "mapbox-boundary-loc3",
     sourceLayer: "boundaries_locality_3",
     minZoom: 10,
@@ -87,7 +87,7 @@ export const MAPBOX_BOUNDARY_LAYERS: readonly BoundaryLayerDefinition[] = [
   {
     level: "loc4",
     label: "Neighborhood",
-    tilesetId: "mapbox.boundaries-loc4-v4_6",
+    tilesetId: "mapbox.boundaries-loc4-v4_7",
     sourceId: "mapbox-boundary-loc4",
     sourceLayer: "boundaries_locality_4",
     minZoom: 12.5,
