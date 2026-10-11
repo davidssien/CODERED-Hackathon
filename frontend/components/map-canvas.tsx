@@ -213,11 +213,11 @@ function ensureFallbackBoundaryLayers(
   const source = instance.getSource(FALLBACK_SOURCE) as GeoJSONSource | undefined;
 
   if (source) {
-    source.setData(boundary.geojson as GeoJSON.FeatureCollection);
+    source.setData(boundary.geojson as any);
   } else {
     instance.addSource(FALLBACK_SOURCE, {
       type: "geojson",
-      data: boundary.geojson as GeoJSON.FeatureCollection,
+      data: boundary.geojson as any,
     });
   }
 
