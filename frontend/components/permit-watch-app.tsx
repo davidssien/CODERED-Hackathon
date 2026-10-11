@@ -9,6 +9,7 @@ import PermitPanel from "@/components/permit-panel";
 import Legend from "@/components/legend";
 import { LocationPanelSkeleton } from "@/components/loading-states";
 import { geocodeAddress } from "@/lib/mapbox";
+import type { GeocodeResult } from "@/lib/mapbox";
 import { getMockLocationReport } from "@/lib/mock-data";
 import type { LocationReport, Permit } from "@/lib/types";
 
@@ -21,13 +22,13 @@ export default function PermitWatchApp() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const searchLocation = async (query: string) => {
+  const searchLocation = async (query: string, resolvedLocation?: GeocodeResult) => {
     setError(null);
     setLocationLoading(true);
     setSelectedPermit(null);
 
     try {
-      const result = await geocodeAddress(query);
+      const result = resolvedLocation ?? (await geocodeAddress(query));
       await sleep(350);
       setReport(getMockLocationReport(result.label, result.coordinates.latitude, result.coordinates.longitude));
     } catch (searchError) {
@@ -71,13 +72,13 @@ export default function PermitWatchApp() {
           onSearch={searchLocation}
           onClear={clearLocation}
         />
+
         {error ? (
           <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/95 px-3 py-2 text-xs font-medium text-rose-700 shadow-sm backdrop-blur">
             <AlertCircle className="h-4 w-4 shrink-0" /> {error}
           </div>
         ) : null}
       </div>
-
 
       {report ? <Legend /> : null}
 
