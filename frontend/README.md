@@ -1,79 +1,47 @@
 # Permit Watch — Frontend
 
-A Next.js + Tailwind + Mapbox implementation of the provided wireframes.
+Next.js + Tailwind + Mapbox interface backed by a cached TCEQ concrete batch plant dataset.
 
-## What is implemented
-
-- **Globe landing state** with a centered address search.
-- **Mapbox globe → neighborhood transition** after an address is searched.
-- Search bar animates from the landing position into the **top-left compact state**.
-- **Location report panel** opens first (not the permit AI panel).
-- Neighborhood condition score, air quality / industrial burden / heat / sensitive-site metrics.
-- Ranked list of **pending permits**.
-- Clicking a permit opens the **AI Estimate** view with impact score, reasons, emissions, dates, and PDF hook.
-- Permit pins are also clickable directly on the map.
-- Loading skeletons for location loading and an AI-analysis loading state.
-- Mobile layout turns the right panel into a bottom sheet.
-- Demo fallback still renders if a Mapbox token has not been added.
-
-## 1. Install
-
+## Run
+Use Node.js 22.18+ (Node 24 recommended for the test command).
+From `frontend/`:
 ```bash
-npm install
-```
-
-## 2. Add Mapbox
-
-Copy `.env.example` to `.env.local`:
-
-```bash
+npm ci
 cp .env.example .env.local
-```
-
-Then add your public Mapbox token:
-
-```env
-NEXT_PUBLIC_MAPBOX_TOKEN=pk.xxxxxxxxxxxxxxxxx
-```
-
-Use a **public** `pk.` token and restrict it to your Vercel/local domains in the Mapbox dashboard.
-
-## 3. Run
-
-```bash
 npm run dev
 ```
+Set `NEXT_PUBLIC_MAPBOX_TOKEN` to a public Mapbox `pk.` token in `.env.local` for the interactive map and arbitrary address/ZIP search. Restrict it to the deployed/local domains in Mapbox. Never put a secret token here.
 
-Open `http://localhost:3000`.
+Without a token, the sourced Holmes Road and Jersey Village facility presets still open factual cached reports. Arbitrary input produces a configuration message instead of silently using Houston's center. The map is unavailable in this fallback.
 
-## Integration contract
+## Integration
+- `GET /api/report?lat=…&lng=…&label=…` reads `data/concrete-plants.json` from the repository root.
+- `lib/report.ts` calculates straight-line miles and existing/pending counts within 1, 3, and 5 miles, using Harris County records only.
+- `lib/types.ts` mirrors the scraper's nullable plant fields, with derived report fields.
+- Frontend county validation uses Mapbox's district and region context. Unverified county results are rejected; ZIP results are representative points, not a neighborhood boundary.
+- The route's bounding box is a coarse sanity guard, not a county polygon. The report dataset is county-filtered.
+- Pending records and existing records can refer to the same physical facility. Counts are records, not unique sites across statuses.
+- Records without coordinates remain accessible separately and are excluded from spatial counts.
+- The report is cached source information, not a live regulatory feed. It may lag current application status.
+- Unknown deadlines and emissions stay unknown. A pending application does not establish an open comment window.
+- No environmental/health risk score or fabricated AI text is displayed.
+- Schools, Gemini explanations, and editable comment drafting remain unconnected.
 
-The UI is intentionally separated from the future backend.
+Person 2 can replace the implementation behind `/api/report` while preserving the factual `LocationReport` contract. Coordinate this contract with teammates before expanding it.
 
-- `lib/types.ts` is the shared frontend data contract.
-- `lib/mock-data.ts` is the only place generating demo environmental/permit records.
-- Replace `getMockLocationReport(...)` in `components/permit-watch-app.tsx` with the backend call when Person 2's API is ready.
-- Keep the returned object shaped like `LocationReport` and the UI does not need to change.
+## Judge demo
+1. Choose the Holmes Road or Jersey Village preset.
+2. Show 1/3/5-mile counts and open the pending application.
+3. Show the distance, source facts, missing-deadline message, and official source link.
+4. Click Back to location, then Reset demo.
+5. Repeat with the second preset. Refresh is a clean reset.
 
-A future call can be as simple as:
-
-```ts
-const response = await fetch(`/api/report?lat=${lat}&lng=${lng}`);
-const report: LocationReport = await response.json();
-setReport(report);
+## Verification
+```bash
+npm test
+npm run typecheck
+npm run build
 ```
+The automated tests cover distance units, radius filtering, null preservation, no-result locations, invalid coordinates, and geocoding failure/county handling.
 
-## Files your frontend role mainly owns
-
-```text
-app/
-components/
-lib/mapbox.ts
-lib/mock-data.ts   # temporary until backend is live
-```
-
-Avoid changing the shared `lib/types.ts` contract without telling the backend/data teammates.
-
-## Important demo note
-
-All scoring and permits in `lib/mock-data.ts` are clearly marked as **demo data**. Do not present them as real environmental facts. When the live TCEQ / H3AT / monitor data is ready, swap the data source without changing the view components.
+For Vercel, import the full repository and set the project root to `frontend`; keep `data/concrete-plants.json` in the parent directory. The static JSON import is bundled into the report route. Set the public Mapbox token before building.
